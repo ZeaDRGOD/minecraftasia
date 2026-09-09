@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MinecraftAsia — Server Rankings</title>
+<meta name="description" content="Live rankings of Asia Minecraft servers by players online, daily peak, uptime, and ping.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-cube" aria-hidden="true"></span>
+    <div>
+      <h1 class="brand-name">MinecraftAsia</h1>
+      <p class="brand-sub">Live server rankings</p>
+    </div>
+  </div>
+
+  <div class="summary">
+    <div class="sum-item"><b id="sumOnline">—</b><label>Players online</label></div>
+    <div class="sum-item"><b id="sumUp">—</b><label>Servers up</label></div>
+    <div class="sum-item"><b id="sumUpdated">—</b><label>Updated</label></div>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="sort-group" role="tablist" aria-label="Sort rankings by">
+    <span class="sort-label">RANK BY</span>
+    <button class="sort-btn active" data-sort="overall">Overall</button>
+    <button class="sort-btn" data-sort="players">Online</button>
+    <button class="sort-btn" data-sort="daily_peak">Daily peak</button>
+    <button class="sort-btn" data-sort="uptime_24h">Uptime</button>
+    <button class="sort-btn" data-sort="ping_ms">Ping</button>
+  </div>
+  <div class="weights-note" id="weightsNote">Overall = 30% online · 25% daily · 25% uptime · 20% ping</div>
+</div>
+
+<div class="col-heads" id="colHeads">
+  <span class="c-rank">#</span>
+  <span class="c-server">Server</span>
+  <span class="c-online">Online</span>
+  <span class="c-daily">Daily peak</span>
+  <span class="c-uptime">Uptime</span>
+  <span class="c-ping">Ping</span>
+  <span class="c-score">Score</span>
+</div>
+
+<main id="board" class="board">
+  <div class="loading">Loading rankings…</div>
+</main>
+
+<footer class="foot">
+  <span>MinecraftAsia — data collected continuously, aggregated on a schedule</span>
+  <span class="foot-dim">Status via mcsrvstat.us</span>
+</footer>
+
+<script src="js/app.js"></script>
+</body>
+</html>
