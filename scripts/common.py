@@ -121,6 +121,38 @@ def daily_peak(raw_records, since_ts):
     return max(r["online"] for r in recs)
 
 
+def sample_once():
+    """Probe every server once, append to each server's raw history, and
+    write a fresh data/live.json. Used by both scripts/poller.py (continuous,
+    self-hosted) and scripts/burst_poll.py (short bursts inside a GitHub
+    Actions run). Returns the ranked results list."""
+    results = probe_all()
+    ts = int(time.time())
+
+    raw_by_server = {}
+    for s in results:
+        path = hist_path(s["address"], "raw.json")
+        data = load_json(path, [])
+        data.append({
+            "ts": ts,
+            "online": s["players"],
+            "ping": s["ping_ms"],
+            "up": 1 if s["online_status"] else 0,
+        })
+        cutoff = ts - RAW_RETENTION_SEC
+        data = [r for r in data if r["ts"] >= cutoff]
+        save_json(path, data)
+        raw_by_server[s["address"]] = data
+
+    ranked = compute_ranking(results, raw_by_server)
+    save_json(LIVE_PATH, {
+        "updated": ts,
+        "weights": {"online": W_ONLINE, "daily": W_DAILY, "uptime": W_UPTIME, "ping": W_PING},
+        "servers": ranked,
+    })
+    return ranked
+
+
 def compute_ranking(results, raw_by_server):
     """results: list of probe() outputs. raw_by_server: address -> list of
     {ts, online, ping, up} raw samples (including the one just taken)."""

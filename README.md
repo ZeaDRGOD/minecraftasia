@@ -1,27 +1,39 @@
 # MinecraftAsia — Server Rankings
 
 A live ranking board for Asia Minecraft servers, scored on **players online**,
-**24h daily peak**, **24h uptime**, and **ping**. Fully static frontend —
-deployable straight to GitHub Pages, no server required to *serve* the site.
+**24h daily peak**, **24h uptime**, and **ping**. Fully static frontend,
+fully GitHub-hosted data pipeline — no external server needed.
 
-## Why this isn't a single "run app.py" project
+## How it works (GitHub-only)
 
-GitHub Pages only serves static files (HTML/CSS/JS/JSON) — it cannot run
-Flask, SQLite, or a background thread. And GitHub Actions' scheduled jobs
-have a 5-minute floor and can slip further under load, so they can't give you
-honest 1-minute samples either.
+GitHub Pages only serves static files — it can't run a persistent process.
+GitHub Actions jobs aren't persistent either (a run executes and stops), and
+scheduled runs have a 5-minute floor that can slip further under load. So
+instead of one continuous poller, `.github/workflows/update.yml` runs a
+**burst** every ~5 minutes:
 
-So the pieces are split by what each part is actually good at:
+1. `scripts/burst_poll.py` — takes 4 samples, spaced a real 60 seconds
+   apart, all within that one job run. Writes `data/live.json` and appends
+   to each server's `data/history/<server>/raw.json`.
+2. `scripts/aggregate.py` — rolls raw samples into hourly/daily buckets and
+   prunes old data.
+3. The workflow commits everything in one shot.
 
-| Piece | Runs where | Job |
-|---|---|---|
-| `scripts/poller.py` | Anywhere always-on that **you** control (your PC, a Pi, a free Oracle Cloud VM, a small always-on Fly.io/Render worker) | Samples all servers every **60 seconds** (real per-minute data), writes `data/live.json` + `data/history/<server>/raw.json`, pushes to git every ~5 minutes |
-| `.github/workflows/aggregate.yml` + `scripts/aggregate.py` | GitHub Actions (free, scheduled) | Rolls raw minute samples into hourly/daily buckets, prunes old data, commits the result |
-| `index.html` / `css/` / `js/` | GitHub Pages (free, static) | Reads the committed JSON and renders the board — no backend calls at all |
+Net effect: genuinely per-minute data *within* each burst, with a possible
+small gap *between* bursts if GitHub delays the schedule (usually a few
+minutes). No VM, Pi, or always-on machine required.
 
-Net result: it's 100% free, lives entirely in one GitHub repo, and you get
-true minute-level graphs for short ranges without needing a paid server for
-the *website* — only a small always-on box for the *poller*.
+**Keep the repo public** — Actions minutes are unlimited and free for public
+repos. On a private repo, a ~4.5 minute job every 5 minutes will burn
+through the 2,000 free minutes/month quickly.
+
+### Want zero gaps instead?
+
+`scripts/poller.py` is kept in the repo as an optional drop-in replacement:
+run it continuously on any always-on machine you control (PC, Pi, a free
+Oracle Cloud VM) instead of relying on Actions' schedule. If you switch to
+it, disable the "Burst-poll servers" step in `update.yml` so the two don't
+overwrite each other's data.
 
 ## Data ranges
 
@@ -40,54 +52,56 @@ overall = 30% × players-online-score
         + 20% × ping-score
 ```
 Weights live in `scripts/common.py` (`W_ONLINE`, `W_DAILY`, `W_UPTIME`,
-`W_PING`) — change them there; the frontend reads whatever weights `live.json`
-reports so the "RANK BY" note stays in sync automatically. You can also
-re-sort the board client-side by any single metric using the buttons in the
-toolbar (Overall / Online / Daily peak / Uptime / Ping).
+`W_PING`). The frontend reads whatever weights `live.json` reports, so the
+"RANK BY" note in the header stays in sync automatically. You can also
+re-sort the board client-side by any single metric using the toolbar
+buttons (Overall / Online / Daily peak / Uptime / Ping).
 
 ## Setup
 
-### 1. Push this repo to GitHub, enable Pages
-
-Settings → Pages → deploy from the `main` branch, root folder. Your site will
-be live at `https://<you>.github.io/<repo>/`.
-
-### 2. Run the poller somewhere always-on
+### 1. Push to GitHub
 
 ```bash
-git clone https://github.com/<you>/<repo>.git
-cd <repo>
-python -m pip install -r requirements.txt
-python scripts/poller.py
+git init
+git add .
+git commit -m "initial commit"
+git branch -M main
+git remote add origin https://github.com/<you>/minecraftasia.git
+git push -u origin main
 ```
 
-Make sure `git push` works from that machine without an interactive prompt
-(an SSH deploy key with write access, or a stored HTTPS PAT). Run it under
-`systemd`, `pm2`, or inside `tmux`/`screen` so it survives reboots/logouts.
+### 2. Enable GitHub Pages
 
-A cheap way to get a permanently-free always-on box for this: Oracle Cloud's
-Always Free tier VM, a spare Raspberry Pi, or a small free-tier worker on
-Fly.io/Render.
+Settings → Pages → Source: "Deploy from a branch" → Branch: `main`,
+folder: `/ (root)` → Save. Site goes live at
+`https://<you>.github.io/minecraftasia/` within a minute or two.
 
-### 3. Aggregation runs itself
+### 3. Let Actions write to the repo
 
-`.github/workflows/aggregate.yml` is already scheduled for every 30 minutes
-and needs no setup beyond the repo being on GitHub with Actions enabled
-(Settings → Actions → General → allow workflows to have write permissions).
+Settings → Actions → General → "Workflow permissions" → select
+**"Read and write permissions"** → Save. Without this, `update.yml`'s
+final `git push` step will fail.
 
-### 4. Add or remove servers
+### 4. Confirm the workflow runs
 
-Edit the `SERVERS` list in `scripts/common.py`. New servers automatically get
-their own `data/history/<server>/` folder on the poller's next run.
+Go to the **Actions** tab — you should see "Update rankings" scheduled
+every 5 minutes. Click **Run workflow** to trigger it manually the first
+time rather than waiting for the schedule, so you can confirm it works and
+see real data land in `data/`.
+
+### 5. Add or remove servers
+
+Edit the `SERVERS` list in `scripts/common.py`. New servers automatically
+get their own `data/history/<server>/` folder on the next run.
 
 ## Font
 
 Server names, MOTDs, and numeric stats use **Monocraft**
 (https://github.com/IdreesInc/Monocraft), a free MIT-licensed pixel font
-inspired by Minecraft's own typeface, loaded from jsDelivr in `css/style.css`
-— no download or build step needed. (Mojang's actual "Minecraftia"/"Mojangles"
-typefaces aren't freely licensed for redistribution, so this is the safe,
-legal stand-in that looks the part.)
+inspired by Minecraft's own typeface, loaded from jsDelivr in
+`css/style.css` — no download or build step needed. (Mojang's actual
+"Minecraftia"/"Mojangles" typefaces aren't freely licensed for
+redistribution, so this is the legal stand-in that looks the part.)
 
 ## Local preview
 
@@ -98,3 +112,6 @@ Because the page `fetch()`s local JSON files, opening `index.html` directly
 python -m http.server 8000
 # open http://localhost:8000
 ```
+
+Until the workflow has run at least once, `data/live.json` is an empty
+placeholder and the board will show nothing — that's expected, not a bug.
