@@ -1,0 +1,51 @@
+name: Update rankings
+
+# Fully self-contained: no external server needed. Each run takes a burst
+# of real 60-second-spaced samples (scripts/burst_poll.py), rolls them into
+# hourly/daily aggregates (scripts/aggregate.py), and commits once.
+#
+# GitHub's cron floor is 5 minutes, and schedules can slip further under
+# load — so there can be small gaps between runs. Within a run, the data is
+# genuine per-minute data.
+#
+# NOTE: if your repo is PRIVATE, this consumes Actions minutes (2,000
+# free/month) — a ~4.5 minute job every 5 minutes adds up fast. Keep the
+# repo PUBLIC to get unlimited free Actions minutes, or reduce frequency /
+# BURST_SAMPLES in scripts/burst_poll.py.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-rankings
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r requirements.txt
+
+      - name: Burst-poll servers (real 60s-spaced samples)
+        run: python scripts/burst_poll.py
+
+      - name: Roll up into hourly/daily history
+        run: python scripts/aggregate.py
+
+      - name: Commit updated data
+        run: |
+          git config user.name "minecraftasia-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data
+          git diff --cached --quiet || (git commit -m "data: update [skip ci]" && git push)
