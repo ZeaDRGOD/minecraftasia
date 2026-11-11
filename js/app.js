@@ -162,11 +162,9 @@ function renderBoard(){
   document.getElementById('sumTracked').textContent = liveData.servers.length;
   document.getElementById('sumUpdated').textContent = timeAgo(liveData.updated);
 
-  // The note element is optional in index.html (it may be commented out).
-  const weightsNote = document.getElementById('weightsNote');
-  if (liveData.weights && weightsNote) {
+  if (liveData.weights) {
     const w = liveData.weights;
-    weightsNote.textContent =
+    document.getElementById('weightsNote').textContent =
       `Overall = ${Math.round(w.online*100)}% online · ${Math.round(w.daily*100)}% daily · ${Math.round(w.uptime*100)}% uptime · ${Math.round(w.ping*100)}% ping`;
   }
 
@@ -189,8 +187,6 @@ function renderBoard(){
 
   // keep expanded panels open across refreshes
   for (const srv of openRows){
-    // History JSON is updated by the backend; don't keep stale detail data.
-    delete histCache[srv];
     const r = board.querySelector(`.row[data-srv="${CSS.escape(srv)}"]`);
     if (r){
       r.classList.add('open');
@@ -442,54 +438,25 @@ document.querySelectorAll('.reveal').forEach(el => io.observe(el));
 /* ---------- boot ---------- */
 let firstRender = true;
 let retryTimer = null;
-let refreshRunning = false;
-let lastLiveUpdated = 0;
 
 async function refresh(){
-  if (refreshRunning) return;
-  refreshRunning = true;
   try {
-    // Cache-busting query also protects against misconfigured CDN/proxy caches.
-    const url = `data/live.json?_=${Date.now()}`;
-    const res = await fetch(url, {
-      cache: 'no-store',
-      headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
-    });
+    const res = await fetch('data/live.json', { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    const nextData = await res.json();
-    if (!nextData || !Array.isArray(nextData.servers)) {
-      throw new Error('Invalid live.json format');
-    }
-
-    const nextUpdated = Number(nextData.updated || 0);
-    const changed = nextUpdated !== lastLiveUpdated || !liveData;
-    liveData = nextData;
-    if (changed) {
-      lastLiveUpdated = nextUpdated;
-      renderBoard();
-    } else {
-      const el = document.getElementById('sumUpdated');
-      if (el) el.textContent = timeAgo(liveData.updated);
-    }
-    clearTimeout(retryTimer);
-    retryTimer = null;
+    liveData = await res.json();
+    renderBoard();
   } catch (e){
-    console.error('[leaderboard] refresh failed:', e);
-    if (!liveData) {
+    // Transient failures happen (poller rewriting the file, network hiccup).
+    // Never blank the board: keep showing the last good data and retry soon.
+    if (!liveData){
       board.innerHTML = '<div class="loading"><span class="loader"></span>Loading rankings…</div>';
     }
     clearTimeout(retryTimer);
     retryTimer = setTimeout(refresh, 10000);
-  } finally {
-    refreshRunning = false;
   }
 }
-
 refresh();
 setInterval(refresh, 60 * 1000);
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) refresh();
-});
 setInterval(() => {
   const el = document.getElementById('sumUpdated');
   if (el && liveData) el.textContent = timeAgo(liveData.updated);
